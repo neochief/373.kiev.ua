@@ -1,0 +1,45 @@
+<?php
+
+/**
+ * @file
+ * Install / Uninstall file for Imagecrop.
+ *
+ * @author Zuuperman - http://drupal.org/user/361625 - http://www.menhir.be
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function imagecrop_schema() {
+
+  $schema['image_crop_settings'] = array(
+    'description' => 'Stores imagecrop settings for files.',
+    'fields' => array(
+      'fid' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'isid' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'xoffset' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'yoffset' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'width' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'height' => array('type' => 'int', 'not null' => TRUE, 'unsigned' => TRUE),
+      'scale' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => 'original'),
+    ),
+    'indexes' => array(
+      'fid' => array('fid'),
+      'isid' => array('isid'),
+    ),
+  );
+
+  return $schema;
+
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function imagecrop_uninstall() {
+
+  variable_del('imagecrop_popup_height');
+  variable_del('imagecrop_popup_width');
+  variable_del('imagecrop_popup');
+
+}
