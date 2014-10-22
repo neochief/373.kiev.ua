@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -30,9 +30,19 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 			{
 				this.focus();
 
+				// Since the insertion might happen from within dialog or menu
+				// where the editor selection might be locked at the moment,
+				// update the locked selection.
+				var selection = this.getSelection(),
+				selIsLocked = selection.isLocked;
+
+				selIsLocked && selection.unlock();
+
 				this.fire( 'saveSnapshot' );
 
 				insertFunc.call( this, evt.data );
+
+				selIsLocked && this.getSelection().lock();
 
 				// Save snaps after the whole execution completed.
 				// This's a workaround for make DOM modification's happened after
@@ -83,11 +93,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 
 		if ( CKEDITOR.env.ie )
 		{
-			var selIsLocked = selection.isLocked;
-
-			if ( selIsLocked )
-				selection.unlock();
-
 			var $sel = selection.getNative();
 
 			// Delete control selections to avoid IE bugs on pasteHTML.
@@ -112,14 +117,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 				}
 			}
 
-			try
-			{
-				$sel.createRange().pasteHTML( data );
-			}
-			catch (e) {}
-
-			if ( selIsLocked )
-				this.getSelection().lock();
+			$sel.createRange().pasteHTML( data );
 		}
 		else
 			this.document.$.execCommand( 'inserthtml', false, data );
@@ -398,8 +396,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 					&& !pathBlock.is( 'pre' )
 					&& !pathBlock.getBogus() )
 			{
-				editor.fire( 'updateSnapshot' );
-				restoreDirty( editor );
 				pathBlock.appendBogus();
 			}
 		}
@@ -412,10 +408,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 				&& blockLimit.getName() == 'body'
 				&& !path.block )
 		{
-			editor.fire( 'updateSnapshot' );
-			restoreDirty( editor );
-			CKEDITOR.env.ie && restoreSelection( selection );
-
 			var fixedBlock = range.fixBlock( true,
 					editor.config.enterMode == CKEDITOR.ENTER_DIV ? 'div' : 'p'  );
 
@@ -464,10 +456,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 		var testPath = new CKEDITOR.dom.elementPath( testRange.startContainer );
 		if ( !testPath.blockLimit.is( 'body') )
 		{
-			editor.fire( 'updateSnapshot' );
-			restoreDirty( editor );
-			CKEDITOR.env.ie && restoreSelection( selection );
-
 			var paddingBlock;
 			if ( enterMode != CKEDITOR.ENTER_BR )
 				paddingBlock = body.append( editor.document.createElement( enterMode == CKEDITOR.ENTER_P ? 'p' : 'div' ) );
@@ -490,6 +478,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 
 			var frameLabel = editor.lang.editorTitle.replace( '%1', editor.name );
 
+			var win = CKEDITOR.document.getWindow();
 			var contentDomReadyHandler;
 			editor.on( 'editingBlockReady', function()
 				{
@@ -498,7 +487,8 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 						isLoadingData,
 						isPendingFocus,
 						frameLoaded,
-						fireMode;
+						fireMode,
+						onResize;
 
 
 					// Support for custom document.domain in IE.
@@ -560,6 +550,19 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 							CKEDITOR.event.useCapture = false;
 
 						mainElement.append( iframe );
+
+						// Webkit: iframe size doesn't auto fit well. (#7360)
+						if ( CKEDITOR.env.webkit )
+						{
+							onResize = function()
+							{
+								iframe.hide();
+								iframe.setSize( 'width', mainElement.getSize( 'width' ) );
+								iframe.show();
+							};
+
+							win.on( 'resize', onResize );
+						}
 					};
 
 					// The script that launches the bootstrap logic on 'domReady', so the document
@@ -703,28 +706,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 							} );
 						}
 
-						// IE standard compliant in editing frame doesn't focus the editor when
-						// clicking outside actual content, manually apply the focus. (#1659)
-						if ( editable &&
-								CKEDITOR.env.ie && domDocument.$.compatMode == 'CSS1Compat'
-								|| CKEDITOR.env.gecko
-								|| CKEDITOR.env.opera )
-						{
-							var htmlElement = domDocument.getDocumentElement();
-							htmlElement.on( 'mousedown', function( evt )
-							{
-								// Setting focus directly on editor doesn't work, we
-								// have to use here a temporary element to 'redirect'
-								// the focus.
-								if ( evt.data.getTarget().equals( htmlElement ) )
-								{
-									if ( CKEDITOR.env.gecko && CKEDITOR.env.version >= 10900 )
-										blinkCursor();
-									focusGrabber.focus();
-								}
-							} );
-						}
-
 						var focusTarget = CKEDITOR.env.ie ? iframe : domWindow;
 						focusTarget.on( 'blur', function()
 							{
@@ -759,80 +740,105 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 						keystrokeHandler.blockedKeystrokes[ 8 ] = !editable;
 						keystrokeHandler.attach( domDocument );
 
-						if ( CKEDITOR.env.ie )
+						domDocument.getDocumentElement().addClass( domDocument.$.compatMode );
+						// Override keystroke behaviors.
+						editable && domDocument.on( 'keydown', function( evt )
 						{
-							domDocument.getDocumentElement().addClass( domDocument.$.compatMode );
-							// Override keystrokes which should have deletion behavior
-							//  on control types in IE . (#4047)
-							editable && domDocument.on( 'keydown', function( evt )
+							var keyCode = evt.data.getKeystroke();
+
+							// Backspace OR Delete.
+							if ( keyCode in { 8 : 1, 46 : 1 } )
 							{
-								var keyCode = evt.data.getKeystroke();
+								var sel = editor.getSelection(),
+									selected = sel.getSelectedElement(),
+									range  = sel.getRanges()[ 0 ];
 
-								// Backspace OR Delete.
-								if ( keyCode in { 8 : 1, 46 : 1 } )
+								// Override keystrokes which should have deletion behavior
+								//  on fully selected element . (#4047) (#7645)
+								if ( selected )
 								{
-									var sel = editor.getSelection(),
-										control = sel.getSelectedElement();
+									// Make undo snapshot.
+									editor.fire( 'saveSnapshot' );
 
-									if ( control )
+									// Delete any element that 'hasLayout' (e.g. hr,table) in IE8 will
+									// break up the selection, safely manage it here. (#4795)
+									range.moveToPosition( selected, CKEDITOR.POSITION_BEFORE_START );
+									// Remove the control manually.
+									selected.remove();
+									range.select();
+
+									editor.fire( 'saveSnapshot' );
+
+									evt.data.preventDefault();
+									return;
+								}
+							}
+
+							// PageUp OR PageDown
+							if ( keyCode == 33 || keyCode == 34 )
+							{
+								if ( CKEDITOR.env.gecko )
+								{
+									var body = domDocument.getBody();
+
+									// Page up/down cause editor selection to leak
+									// outside of editable thus we try to intercept
+									// the behavior, while it affects only happen
+									// when editor contents are not overflowed. (#7955)
+									if ( domWindow.$.innerHeight > body.$.offsetHeight )
 									{
-										// Make undo snapshot.
-										editor.fire( 'saveSnapshot' );
-
-										// Delete any element that 'hasLayout' (e.g. hr,table) in IE8 will
-										// break up the selection, safely manage it here. (#4795)
-										var bookmark = sel.getRanges()[ 0 ].createBookmark();
-										// Remove the control manually.
-										control.remove();
-										sel.selectBookmarks( [ bookmark ] );
-
-										editor.fire( 'saveSnapshot' );
-
+										range = new CKEDITOR.dom.range( domDocument );
+										range[ keyCode == 33 ? 'moveToElementEditStart' : 'moveToElementEditEnd']( body );
+										range.select();
 										evt.data.preventDefault();
 									}
 								}
-							} );
 
-							// PageUp/PageDown scrolling is broken in document
-							// with standard doctype, manually fix it. (#4736)
-							if ( domDocument.$.compatMode == 'CSS1Compat' )
-							{
-								var pageUpDownKeys = { 33 : 1, 34 : 1 };
-								domDocument.on( 'keydown', function( evt )
-								{
-									if ( evt.data.getKeystroke() in pageUpDownKeys )
-									{
-										setTimeout( function ()
-										{
-											editor.getSelection().scrollIntoView();
-										}, 0 );
-									}
-								} );
 							}
+						} );
 
-							// Prevent IE from leaving new paragraph after deleting all contents in body. (#6966)
-							editor.config.enterMode != CKEDITOR.ENTER_P
-								&& domDocument.on( 'selectionchange', function()
+						// PageUp/PageDown scrolling is broken in document
+						// with standard doctype, manually fix it. (#4736)
+						if ( CKEDITOR.env.ie && domDocument.$.compatMode == 'CSS1Compat' )
+						{
+							var pageUpDownKeys = { 33 : 1, 34 : 1 };
+							domDocument.on( 'keydown', function( evt )
+							{
+								if ( evt.data.getKeystroke() in pageUpDownKeys )
 								{
-									var body = domDocument.getBody(),
-										range = editor.getSelection().getRanges()[ 0 ];
-
-									if ( body.getHtml().match( /^<p>&nbsp;<\/p>$/i )
-										&& range.startContainer.equals( body ) )
+									setTimeout( function ()
 									{
-										// Avoid the ambiguity from a real user cursor position.
-										setTimeout( function ()
+										editor.getSelection().scrollIntoView();
+									}, 0 );
+								}
+							} );
+						}
+
+						// Prevent IE from leaving new paragraph after deleting all contents in body. (#6966)
+						if ( CKEDITOR.env.ie && editor.config.enterMode != CKEDITOR.ENTER_P )
+						{
+							domDocument.on( 'selectionchange', function()
+							{
+								var body = domDocument.getBody(),
+									sel = editor.getSelection(),
+									range = sel && sel.getRanges()[ 0 ];
+
+								if ( range && body.getHtml().match( /^<p>&nbsp;<\/p>$/i )
+									&& range.startContainer.equals( body ) )
+								{
+									// Avoid the ambiguity from a real user cursor position.
+									setTimeout( function ()
+									{
+										range = editor.getSelection().getRanges()[ 0 ];
+										if ( !range.startContainer.equals ( 'body' ) )
 										{
-											range = editor.getSelection().getRanges()[ 0 ];
-											if ( !range.startContainer.equals ( 'body' ) )
-											{
-												body.getFirst().remove( 1 );
-												range.moveToElementEditEnd( body );
-												range.select( 1 );
-											}
-										}, 0 );
-									}
-								});
+											body.getFirst().remove( 1 );
+											range.moveToElementEditEnd( body );
+											range.select( 1 );
+										}
+									}, 0 );
+								}
+							});
 						}
 
 						// Adds the document body as a context menu target.
@@ -846,7 +852,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 								if ( fireMode )
 								{
 									editor.mode = 'wysiwyg';
-									editor.fire( 'mode' );
+									editor.fire( 'mode', { previousMode : editor._.previousMode } );
 									fireMode = false;
 								}
 
@@ -1090,6 +1096,9 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 							{
 								this.onDispose();
 
+								if ( onResize )
+									win.removeListener( 'resize', onResize );
+
 								editor.window = editor.document = iframe = mainElement = isPendingFocus = null;
 
 								editor.fire( 'contentDomUnload' );
@@ -1101,18 +1110,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 
 								if ( isLoadingData )
 									isPendingFocus = true;
-								// Temporary solution caused by #6025, supposed be unified by #6154.
-								else if ( CKEDITOR.env.opera && editor.document )
-								{
-									// Required for Opera when switching focus
-									// from another iframe, e.g. panels. (#6444)
-									var iframe = editor.window.$.frameElement;
-									iframe.blur(), iframe.focus();
-									editor.document.getBody().focus();
-
-									editor.selectionChange();
-								}
-								else if ( !CKEDITOR.env.opera && win )
+								else if ( win )
 								{
 									// AIR needs a while to focus when moving from a link.
 									CKEDITOR.env.air ? setTimeout( function () { win.focus(); }, 0 ) : win.focus();
@@ -1125,7 +1123,23 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 					editor.on( 'insertElement', onInsert( doInsertElement ), null, null, 20 );
 					editor.on( 'insertText', onInsert( doInsertText ), null, null, 20 );
 					// Auto fixing on some document structure weakness to enhance usabilities. (#3190 and #3189)
-					editor.on( 'selectionChange', onSelectionChangeFixBody, null, null, 1 );
+					editor.on( 'selectionChange', function( evt )
+					{
+						if ( editor.readOnly )
+							return;
+
+						var sel = editor.getSelection();
+						// Do it only when selection is not locked. (#8222)
+						if ( sel && !sel.isLocked )
+						{
+							var isDirty = editor.checkDirty();
+							editor.fire( 'saveSnapshot', { contentOnly : 1 } );
+							onSelectionChangeFixBody.call( this, evt );
+							editor.fire( 'updateSnapshot' );
+							!isDirty && editor.resetDirty();
+						}
+
+					}, null, null, 1 );
 				});
 
 			var titleBackup;
@@ -1165,6 +1179,9 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 				editor.addCss( 'html { height: 100% !important; }' );
 				editor.addCss( 'img:-moz-broken { -moz-force-broken-image-icon : 1;	width : 24px; height : 24px; }' );
 			}
+			// Remove the margin to avoid mouse confusion. (#8835)
+			else if ( CKEDITOR.env.ie && CKEDITOR.env.version < 8 && editor.config.contentsLangDirection == 'ltr' )
+				editor.addCss( 'body{margin-right:0;}' );
 
 			/* #3658: [IE6] Editor document has horizontal scrollbar on long lines
 			To prevent this misbehavior, we show the scrollbar always */
@@ -1205,31 +1222,6 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 					});
 			}
 
-			// Create an invisible element to grab focus.
-			if ( CKEDITOR.env.gecko || CKEDITOR.env.ie || CKEDITOR.env.opera )
-			{
-				var focusGrabber;
-				editor.on( 'uiReady', function()
-				{
-					focusGrabber = editor.container.append( CKEDITOR.dom.element.createFromHtml(
-						// Use 'span' instead of anything else to fly under the screen-reader radar. (#5049)
-						'<span tabindex="-1" style="position:absolute;" role="presentation"></span>' ) );
-
-					focusGrabber.on( 'focus', function()
-						{
-							editor.focus();
-						} );
-
-					editor.focusGrabber = focusGrabber;
-				} );
-				editor.on( 'destroy', function()
-				{
-					CKEDITOR.tools.removeFunction( contentDomReadyHandler );
-					focusGrabber.clearCustomData();
-					delete editor.focusGrabber;
-				} );
-			}
-
 			// Disable form elements editing mode provided by some browers. (#5746)
 			editor.on( 'insertElement', function ( evt )
 			{
@@ -1239,9 +1231,12 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 				{
 					// We should flag that the element was locked by our code so
 					// it'll be editable by the editor functions (#6046).
-					if ( !element.isReadOnly() )
+					var readonly = element.getAttribute( 'contenteditable' ) == 'false';
+					if ( !readonly )
+					{
 						element.data( 'cke-editable', element.hasAttribute( 'contenteditable' ) ? 'true' : '1' );
-					element.setAttribute( 'contentEditable', false );
+						element.setAttribute( 'contenteditable', false );
+					}
 				}
 			});
 

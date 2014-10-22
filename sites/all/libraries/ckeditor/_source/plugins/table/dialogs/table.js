@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -14,6 +14,43 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 			data.info = {};
 		data.info[id] = this.getValue();
 	};
+
+	function tableColumns( table )
+	{
+		var cols = 0, maxCols = 0;
+		for ( var i = 0, row, rows = table.$.rows.length; i < rows; i++ )
+		{
+			row = table.$.rows[ i ], cols = 0;
+			for ( var j = 0, cell, cells = row.cells.length; j < cells; j++ )
+			{
+				cell = row.cells[ j ];
+				cols += cell.colSpan;
+			}
+
+			cols > maxCols && ( maxCols = cols );
+		}
+
+		return maxCols;
+	}
+
+
+	// Whole-positive-integer validator.
+	function validatorNum( msg )
+	{
+		return function()
+		{
+			var value = this.getValue(),
+				pass = !!( CKEDITOR.dialog.validate.integer()( value ) && value > 0 );
+
+			if ( !pass )
+			{
+				alert( msg );
+				this.select();
+			}
+
+			return pass;
+		};
+	}
 
 	function tableDialog( editor, command )
 	{
@@ -263,19 +300,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 											label : editor.lang.table.rows,
 											required : true,
 											controlStyle : 'width:5em',
-											validate : function()
-											{
-												var pass = true,
-													value = this.getValue();
-												pass = pass && CKEDITOR.dialog.validate.integer()( value )
-													&& value > 0;
-												if ( !pass )
-												{
-													alert( editor.lang.table.invalidRows );
-													this.select();
-												}
-												return pass;
-											},
+											validate : validatorNum( editor.lang.table.invalidRows ),
 											setup : function( selectedElement )
 											{
 												this.setValue( selectedElement.$.rows.length );
@@ -289,22 +314,10 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 											label : editor.lang.table.columns,
 											required : true,
 											controlStyle : 'width:5em',
-											validate : function()
-											{
-												var pass = true,
-													value = this.getValue();
-												pass = pass && CKEDITOR.dialog.validate.integer()( value )
-													&& value > 0;
-												if ( !pass )
-												{
-													alert( editor.lang.table.invalidCols );
-													this.select();
-												}
-												return pass;
-											},
+											validate : validatorNum( editor.lang.table.invalidCols ),
 											setup : function( selectedTable )
 											{
-												this.setValue( selectedTable.$.rows[0].cells.length);
+												this.setValue( tableColumns( selectedTable ) );
 											},
 											commit : commitValue
 										},
@@ -334,7 +347,8 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 												for ( var row = 0 ; row < selectedTable.$.rows.length ; row++ )
 												{
 													// If just one cell isn't a TH then it isn't a header column
-													if ( selectedTable.$.rows[row].cells[0].nodeName.toLowerCase() != 'th' )
+													var headCell = selectedTable.$.rows[row].cells[0];
+													if ( headCell && headCell.nodeName.toLowerCase() != 'th' )
 													{
 														dialog.hasColumnHeaders = false;
 														break;
@@ -409,6 +423,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 													id : 'txtWidth',
 													controlStyle : 'width:5em',
 													label : editor.lang.common.width,
+													title : editor.lang.common.cssLengthTooltip,
 													'default' : 500,
 													getValue : defaultToPixel,
 													validate : CKEDITOR.dialog.validate.cssLength( editor.lang.common.invalidCssLength.replace( '%1', editor.lang.common.width ) ),
@@ -436,6 +451,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 													id : 'txtHeight',
 													controlStyle : 'width:5em',
 													label : editor.lang.common.height,
+													title : editor.lang.common.cssLengthTooltip,
 													'default' : '',
 													getValue : defaultToPixel,
 													validate : CKEDITOR.dialog.validate.cssLength( editor.lang.common.invalidCssLength.replace( '%1', editor.lang.common.height ) ),
@@ -447,7 +463,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 
 													setup : function( selectedTable )
 													{
-														var val = selectedTable.getStyle( 'width' );
+														var val = selectedTable.getStyle( 'height' );
 														val && this.setValue( val );
 													},
 													commit : commitValue

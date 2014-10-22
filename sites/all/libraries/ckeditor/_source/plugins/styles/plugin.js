@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -222,11 +222,12 @@ CKEDITOR.STYLE_OBJECT = 3;
 		// current style definition.
 		checkElementRemovable : function( element, fullMatch )
 		{
-			if ( !element || element.isReadOnly() )
+			var def = this._.definition;
+
+			if ( !element || !def.ignoreReadonly && element.isReadOnly() )
 				return false;
 
-			var def = this._.definition,
-				attribs,
+			var attribs,
 				name = element.getName();
 
 			// If the element name is the same as the style name.
@@ -423,7 +424,8 @@ CKEDITOR.STYLE_OBJECT = 3;
 		var isUnknownElement;
 
 		// Indicates that fully selected read-only elements are to be included in the styling range.
-		var includeReadonly = def.includeReadonly;
+		var ignoreReadonly = def.ignoreReadonly,
+			includeReadonly = ignoreReadonly || def.includeReadonly;
 
 		// If the read-only inclusion is not available in the definition, try
 		// to get it from the document data.
@@ -447,19 +449,22 @@ CKEDITOR.STYLE_OBJECT = 3;
 
 		var styleRange;
 
-		// Check if the boundaries are inside non stylable elements.
-		var firstUnstylable = getUnstylableParent( firstNode ),
-			lastUnstylable = getUnstylableParent( lastNode );
+		if ( !ignoreReadonly )
+		{
+			// Check if the boundaries are inside non stylable elements.
+			var firstUnstylable = getUnstylableParent( firstNode ),
+					lastUnstylable = getUnstylableParent( lastNode );
 
-		// If the first element can't be styled, we'll start processing right
-		// after its unstylable root.
-		if ( firstUnstylable )
-			currentNode = firstUnstylable.getNextSourceNode( true );
+			// If the first element can't be styled, we'll start processing right
+			// after its unstylable root.
+			if ( firstUnstylable )
+				currentNode = firstUnstylable.getNextSourceNode( true );
 
-		// If the last element can't be styled, we'll stop processing on its
-		// unstylable root.
-		if ( lastUnstylable )
-			lastNode = lastUnstylable;
+			// If the last element can't be styled, we'll stop processing on its
+			// unstylable root.
+			if ( lastUnstylable )
+				lastNode = lastUnstylable;
+		}
 
 		// Do nothing if the current node now follows the last node to be processed.
 		if ( currentNode.getPosition( lastNode ) == CKEDITOR.POSITION_FOLLOWING )
@@ -786,7 +791,7 @@ CKEDITOR.STYLE_OBJECT = 3;
 			breakNodes();
 
 			// Now, do the DFS walk.
-			var currentNode = startNode.getNext();
+			var currentNode = startNode;
 			while ( !currentNode.equals( endNode ) )
 			{
 				/*
@@ -839,7 +844,6 @@ CKEDITOR.STYLE_OBJECT = 3;
 		var style = this,
 			def = style._.definition,
 			attributes = def.attributes;
-		var styles = CKEDITOR.style.getStyleText( def );
 
 		// Remove all defined attributes.
 		if ( attributes )
@@ -1128,8 +1132,9 @@ CKEDITOR.STYLE_OBJECT = 3;
 	function removeFromElement( style, element )
 	{
 		var def = style._.definition,
-			attributes = CKEDITOR.tools.extend( {}, def.attributes, getOverrides( style )[ element.getName() ] ),
+			attributes = def.attributes,
 			styles = def.styles,
+			overrides = getOverrides( style )[ element.getName() ],
 			// If the style is only about the element itself, we have to remove the element.
 			removeEmpty = CKEDITOR.tools.isEmpty( attributes ) && CKEDITOR.tools.isEmpty( styles );
 
@@ -1154,6 +1159,9 @@ CKEDITOR.STYLE_OBJECT = 3;
 			removeEmpty = removeEmpty || !!element.getStyle( styleName );
 			element.removeStyle( styleName );
 		}
+
+		// Remove overrides, but don't remove the element if it's a block element
+		removeOverrides( element, overrides, blockElements[ element.getName() ] ) ;
 
 		if ( removeEmpty )
 		{
@@ -1196,8 +1204,9 @@ CKEDITOR.STYLE_OBJECT = 3;
 	 *  Note: Remove the element if no attributes remain.
 	 * @param {Object} element
 	 * @param {Object} overrides
+	 * @param {Boolean} Don't remove the element
 	 */
-	function removeOverrides( element, overrides )
+	function removeOverrides( element, overrides, dontRemove )
 	{
 		var attributes = overrides && overrides.attributes ;
 
@@ -1225,7 +1234,8 @@ CKEDITOR.STYLE_OBJECT = 3;
 			}
 		}
 
-		removeNoAttribsElement( element );
+		if ( !dontRemove )
+			removeNoAttribsElement( element );
 	}
 
 	// If the element has no more attributes, remove it.

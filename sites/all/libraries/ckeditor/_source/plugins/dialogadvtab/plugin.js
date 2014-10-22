@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -132,6 +132,7 @@ CKEDITOR.plugins.add( 'dialogadvtab',
 						label : lang.styles,
 						'default' : '',
 
+						validate : CKEDITOR.dialog.validate.inlineStyle( lang.invalidInlineStyle ),
 						onChange : function(){},
 
 						getStyle : function( name, defaultValue )

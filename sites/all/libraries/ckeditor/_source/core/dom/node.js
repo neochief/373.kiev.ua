@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -23,21 +23,13 @@ CKEDITOR.dom.node = function( domNode )
 {
 	if ( domNode )
 	{
-		switch ( domNode.nodeType )
-		{
-			// Safari don't consider document as element node type. (#3389)
-			case CKEDITOR.NODE_DOCUMENT :
-				return new CKEDITOR.dom.document( domNode );
+		var type = domNode.nodeType == CKEDITOR.NODE_DOCUMENT ? 'document'
+			: domNode.nodeType == CKEDITOR.NODE_ELEMENT ? 'element'
+			: domNode.nodeType == CKEDITOR.NODE_TEXT ? 'text'
+			: domNode.nodeType == CKEDITOR.NODE_COMMENT ? 'comment'
+			: 'domObject';  // Call the base constructor otherwise.
 
-			case CKEDITOR.NODE_ELEMENT :
-				return new CKEDITOR.dom.element( domNode );
-
-			case CKEDITOR.NODE_TEXT :
-				return new CKEDITOR.dom.text( domNode );
-		}
-
-		// Call the base constructor.
-		CKEDITOR.dom.domObject.call( this, domNode );
+		return new CKEDITOR.dom[ type ]( domNode );
 	}
 
 	return this;
@@ -352,7 +344,10 @@ CKEDITOR.tools.extend( CKEDITOR.dom.node.prototype,
 			do
 			{
 				previous = previous.previousSibling;
-				retval = previous && new CKEDITOR.dom.node( previous );
+
+				// Avoid returning the doc type node.
+				// http://www.w3.org/TR/REC-DOM-Level-1/level-one-core.html#ID-412266927
+				retval = previous && previous.nodeType != 10 && new CKEDITOR.dom.node( previous );
 			}
 			while ( retval && evaluator && !evaluator( retval ) )
 			return retval;
@@ -654,42 +649,43 @@ CKEDITOR.tools.extend( CKEDITOR.dom.node.prototype,
 		},
 
 		/**
-		 * Checks if this node is read-only (should not be changed). Additionally
-		 * it returns the element that defines the read-only state of this node
-		 * (if present). It may be the node itself or any of its parent
-		 * nodes.
-		 * @returns {CKEDITOR.dom.element|Boolean} An element containing
-		 *		read-only attributes or "false" if none is found.
+		 * Checks if this node is read-only (should not be changed).
+		 * @returns {Boolean}
 		 * @since 3.5
 		 * @example
 		 * // For the following HTML:
 		 * // &lt;div contenteditable="false"&gt;Some &lt;b&gt;text&lt;/b&gt;&lt;/div&gt;
 		 *
 		 * // If "ele" is the above &lt;div&gt;
-		 * ele.isReadOnly();  // the &lt;div&gt; element
-		 *
-		 * // If "ele" is the above &lt;b&gt;
-		 * ele.isReadOnly();  // the &lt;div&gt; element
+		 * ele.isReadOnly();  // true
 		 */
 		isReadOnly : function()
 		{
-			var current = this;
-			while( current )
+			var element = this;
+			if ( this.type != CKEDITOR.NODE_ELEMENT )
+				element = this.getParent();
+
+			if ( element && typeof element.$.isContentEditable != 'undefined' )
+				return ! ( element.$.isContentEditable || element.data( 'cke-editable' ) );
+			else
 			{
-				if ( current.type == CKEDITOR.NODE_ELEMENT )
+				// Degrade for old browsers which don't support "isContentEditable", e.g. FF3
+				var current = element;
+				while( current )
 				{
 					if ( current.is( 'body' ) || !!current.data( 'cke-editable' ) )
 						break;
 
 					if ( current.getAttribute( 'contentEditable' ) == 'false' )
-						return current;
+						return true;
 					else if ( current.getAttribute( 'contentEditable' ) == 'true' )
 						break;
-				}
-				current = current.getParent();
-			}
 
-			return false;
+					current = current.getParent();
+				}
+
+				return false;
+			}
 		}
 	}
 );

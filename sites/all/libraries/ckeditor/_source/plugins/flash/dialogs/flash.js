@@ -1,5 +1,5 @@
 ﻿/*
-Copyright (c) 2003-2011, CKSource - Frederico Knabben. All rights reserved.
+Copyright (c) 2003-2012, CKSource - Frederico Knabben. All rights reserved.
 For licensing, see LICENSE.html or http://ckeditor.com/license
 */
 
@@ -661,6 +661,7 @@ For licensing, see LICENSE.html or http://ckeditor.com/license
 						{
 							type : 'text',
 							id : 'style',
+							validate : CKEDITOR.dialog.validate.inlineStyle( editor.lang.common.invalidInlineStyle ),
 							label : editor.lang.common.cssStyle,
 							setup : loadValue,
 							commit : commitValue
