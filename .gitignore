@@ -5,11 +5,4 @@ sites/*/settings*.php
 sites/*/files
 sites/*/private
 
-dump*.sql
-files
-.idea
-.DS_Store
-cache/*
-
-sites/all/modules/dev
 topomap

@@ -182,9 +182,9 @@ $databases = array (
   array (
     'default' => 
     array (
-      'database' => 'u4142_kkk',
-      'username' => 'u4142_kkk',
-      'password' => 'kkk',
+      'database' => 'strike',
+      'username' => 'forge',
+      'password' => 'xLNa5qkKqKvKTCUGfqhj',
       'host' => 'localhost',
       'port' => '',
       'driver' => 'mysql',

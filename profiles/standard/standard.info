@@ -23,10 +23,9 @@ dependencies[] = overlay
 dependencies[] = field_ui
 dependencies[] = file
 dependencies[] = rdf
-files[] = standard.profile
 
-; Information added by drupal.org packaging script on 2011-07-28
-version = "7.7"
+; Information added by Drupal.org packaging script on 2015-08-19
+version = "7.39"
 project = "drupal"
-datestamp = "1311813879"
+datestamp = "1440020197"
 
