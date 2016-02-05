@@ -184,7 +184,7 @@ $databases = array (
     array (
       'database' => 'strike',
       'username' => 'forge',
-      'password' => 'xLNa5qkKqKvKTCUGfqhj',
+      'password' => '2fR7O2wrUVdztWbv5PHN',
       'host' => 'localhost',
       'port' => '',
       'driver' => 'mysql',
